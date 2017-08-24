@@ -1,0 +1,25 @@
+_export:
+  spark_defaults: &spark_defaults
+    executor_cores: 2
+    num_executors: 3
+
+  plugin:
+    repositories:
+      # - file://${repos}
+      - https://jitpack.io
+    dependencies:
+      - com.github.platform-lunar:digdag-plugin-livy:0.1.0
+
++livy_action:
+  <<: *spark_defaults
+  livy>: livy application test
+  host: ${livy_host}
+  port: 8998
+  file: ${spark_file}
+  class_name: ${spark_class}
+  driver_memory: 1024mb
+  name: Test livy application
+  jars:
+    - ${spark_file}
+  conf:
+    spark.yarn.appMasterEnv.TEST: testing

@@ -1,0 +1,79 @@
+plugins {
+    id 'net.ltgt.apt' version '0.9'
+}
+
+apply plugin: 'java'
+apply plugin: 'maven'
+apply plugin: 'maven-publish'
+apply plugin: 'net.ltgt.apt'
+
+group = 'com.github.platform-lunar'
+version = '0.1.0'
+
+def digdagVersion = '0.9.13'
+
+repositories {
+    mavenCentral()
+    jcenter()
+    maven {
+        url  "http://dl.bintray.com/digdag/maven"
+    }
+    maven {
+        url 'https://jitpack.io'
+    }
+}
+
+configurations {
+    provided
+}
+
+dependencies {
+    provided 'io.digdag:digdag-spi:' + digdagVersion
+    provided 'io.digdag:digdag-standards:' + digdagVersion
+    provided 'io.digdag:digdag-plugin-utils:' + digdagVersion  // this should be 'compile' once digdag 0.8.2 is released to a built-in repository
+    compile 'com.squareup.okhttp3:okhttp:3.8.1'
+    compileOnly 'com.fasterxml.jackson.core:jackson-annotations:2.6.7'
+    compileOnly 'com.fasterxml.jackson.datatype:jackson-datatype-guava:2.6.7'
+
+    compileOnly 'org.immutables:value:2.5.5:annotations'
+    apt 'org.immutables:value:2.5.5'
+    apt 'com.fasterxml.jackson.core:jackson-annotations:2.6.7'
+}
+
+sourceSets {
+    main {
+        compileClasspath += configurations.provided
+        test.compileClasspath += configurations.provided
+        test.runtimeClasspath += configurations.provided
+    }
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            url "$buildDir/repo"
+        }
+    }
+}
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+compileJava.options.encoding = 'UTF-8'
+compileTestJava.options.encoding = 'UTF-8'
+
+tasks.withType(JavaCompile) {
+    options.compilerArgs << "-Xlint:unchecked" << "-Xlint:deprecation"
+}
+
+javadoc {
+    options {
+        locale = 'en_US'
+        encoding = 'UTF-8'
+    }
+}
