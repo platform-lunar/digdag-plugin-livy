@@ -8,7 +8,7 @@ _export:
       # - file://${repos}
       - https://jitpack.io
     dependencies:
-      - com.github.platform-lunar:digdag-plugin-livy:0.1.1
+      - com.github.platform-lunar:digdag-plugin-livy:0.1.2
 
 +livy_action:
   _retry: 2

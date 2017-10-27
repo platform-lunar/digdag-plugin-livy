@@ -17,7 +17,7 @@ _export:
     repositories:
       - https://jitpack.io
     dependencies:
-      - com.github.platform-lunar:digdag-plugin-livy:0.1.1
+      - com.github.platform-lunar:digdag-plugin-livy:0.1.2
   # Set livy host
   livy:
     host: http://livy.cluster.internal
