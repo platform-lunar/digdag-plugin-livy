@@ -105,11 +105,16 @@ public class LivyOperator extends BaseOperator
         }
     }
 
+    private Integer retryCount()
+    {
+        return this.state.params().get("retry_count", int.class, 0);
+    }
+
     private TaskResult run(String endpoint, LivyBatchRequest submission) throws IOException
     {
         String applicationName = submission.name().or("unknown");
 
-        LivyTaskState submissionState = pollingRetryExecutor(state, STATE_START)
+        LivyTaskState submissionState = pollingRetryExecutor(state, STATE_START + "_" + retryCount())
             .withErrorMessage("Livy job submission failed: %s", applicationName)
             .runOnce(LivyTaskState.class, (TaskState state) -> {
                     logger.info("Submitting Livy job: {}", applicationName);
@@ -141,7 +146,7 @@ public class LivyOperator extends BaseOperator
                 }
             );
 
-        LivyTaskState executionState = pollingWaiter(state, STATE_RUNNING)
+        LivyTaskState executionState = pollingWaiter(state, STATE_RUNNING + "_" + retryCount())
             .withPollInterval(DurationInterval.of(Duration.ofSeconds(1), Duration.ofSeconds(10)))
             .withWaitMessage("Livy task id %d is still running", submissionState.id())
             .awaitOnce(LivyTaskState.class, pollState -> checkTaskCompletion(submissionState.id(), endpoint, pollState));
@@ -153,7 +158,7 @@ public class LivyOperator extends BaseOperator
 
     private Optional<LivyTaskState> checkTaskCompletion(Integer jobId, String endpoint, TaskState pollState) throws IOException
     {
-        return pollingRetryExecutor(pollState, STATE_CHECK)
+        return pollingRetryExecutor(pollState, STATE_CHECK + "_" + retryCount())
             .withRetryInterval(DurationInterval.of(Duration.ofSeconds(15), Duration.ofSeconds(15)))
             .run(s -> {
                     Request request = new Request.Builder()

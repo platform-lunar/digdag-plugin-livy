@@ -11,6 +11,7 @@ _export:
       - com.github.platform-lunar:digdag-plugin-livy:0.1.1
 
 +livy_action:
+  _retry: 2
   <<: *spark_defaults
   livy>: livy application test
   livy:
