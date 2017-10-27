@@ -31,6 +31,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.Map;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import static io.digdag.standards.operator.state.PollingRetryExecutor.pollingRetryExecutor;
 import static io.digdag.standards.operator.state.PollingWaiter.pollingWaiter;
@@ -41,7 +42,7 @@ public class LivyOperator extends BaseOperator
 
     private static Logger logger = LoggerFactory.getLogger(LivyOperator.class);
 
-    private final OkHttpClient httpClient = new OkHttpClient();
+    private OkHttpClient httpClient;
 
     private final Optional<LivyHttpConfig> systemLivyHttpConfig;
 
@@ -55,6 +56,7 @@ public class LivyOperator extends BaseOperator
     private static final String STATE_START = "start";
     private static final String STATE_RUNNING = "running";
     private static final String STATE_CHECK = "check";
+    private static final Integer DEFAULT_HTTP_TIMEOUT = 30;
 
     public LivyOperator(OperatorContext context)
     {
@@ -75,6 +77,12 @@ public class LivyOperator extends BaseOperator
         LivyHttpConfig livyConf = userLivyHttpConfig(secrets, params)
             .or(systemLivyHttpConfig)
             .orNull();
+
+        this.httpClient = new OkHttpClient.Builder()
+            .connectTimeout(livyConf.connectTimeout().get(), TimeUnit.SECONDS)
+            .writeTimeout(livyConf.writeTimeout().get(), TimeUnit.SECONDS)
+            .readTimeout(livyConf.readTimeout().get(), TimeUnit.SECONDS)
+            .build();
 
         // Set Livy batch session request (task) config
         LivyBatchRequest batchSubmission = userBatchRequestConfig(secrets, params);
@@ -196,6 +204,9 @@ public class LivyOperator extends BaseOperator
             .https(systemConfig.get("config.livy.https", boolean.class, false))
             .username(systemConfig.getOptional("config.livy.username", String.class))
             .password(systemConfig.getOptional("config.livy.password", String.class))
+            .connectTimeout(systemConfig.get("config.livy.connect_timeout", int.class, DEFAULT_HTTP_TIMEOUT))
+            .readTimeout(systemConfig.get("config.livy.read_timeout", int.class, DEFAULT_HTTP_TIMEOUT))
+            .writeTimeout(systemConfig.get("config.livy.write_timeout", int.class, DEFAULT_HTTP_TIMEOUT))
             .build();
 
         return Optional.of(config);
@@ -214,6 +225,9 @@ public class LivyOperator extends BaseOperator
             .https(secrets.getSecretOptional("https").transform(Boolean::parseBoolean).or(params.get("https", boolean.class, false)))
             .username(secrets.getSecretOptional("username").or(params.getOptional("username", String.class)))
             .password(secrets.getSecretOptional("password"))
+            .connectTimeout(params.get("connect_timeout", int.class, DEFAULT_HTTP_TIMEOUT))
+            .readTimeout(params.get("read_timeout", int.class, DEFAULT_HTTP_TIMEOUT))
+            .writeTimeout(params.get("write_timeout", int.class, DEFAULT_HTTP_TIMEOUT))
             .build();
 
         return Optional.of(config);
