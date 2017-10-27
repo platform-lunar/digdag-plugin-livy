@@ -13,8 +13,12 @@ _export:
 +livy_action:
   <<: *spark_defaults
   livy>: livy application test
-  host: ${livy_host}
-  port: 8998
+  livy:
+    host: ${livy_host}
+    port: 8998
+    connect_timeout: 300
+    read_timeout: 300
+    write_timeout: 300
   file: ${spark_file}
   class_name: ${spark_class}
   driver_memory: 1024mb

@@ -13,4 +13,7 @@ interface LivyHttpConfig
     Optional<Boolean> https();
     Optional<String> username();
     Optional<String> password();
+    Optional<Integer> connectTimeout();
+    Optional<Integer> readTimeout();
+    Optional<Integer> writeTimeout();
 }
