@@ -38,6 +38,13 @@ Submission example:
 digdag run --project sample plugin.dig -p spark_file=s3://<bucket>/<file>.jar -p spark_class=some.class.Class -p livy_host=<livy_host> -p repos=`pwd`/build/repo --rerun
 ```
 
+Testing changes locally:
+
+```
+rm -fr build/repo && ./gradlew clean publishMavenJavaPublicationToMavenRepository
+rm -fr .digdag/ && digdag run --project sample plugin.dig -p spark_file=s3://<bucket>/<file>.jar -p spark_class=some.class.Class -p livy_host=<livy_host> -p repos=`pwd`/build/repo --rerun
+```
+
 ## License
 
 [Apache License 2.0](LICENSE)
