@@ -94,10 +94,10 @@ public class LivyOperator extends BaseOperator
             userinfo = livyConf.username().get() + ":" + livyConf.password().get() + "@";
         }
 
-        String endpoint = scheme + "://" + userinfo + livyConf.host() + ":" + livyConf.port().get() + "/batches";
+        String address = scheme + "://" + userinfo + livyConf.host() + ":" + livyConf.port().get();
 
         try {
-            return run(endpoint, batchSubmission);
+            return run(address, batchSubmission);
         } catch (Throwable t) {
             boolean retry = t instanceof TaskExecutionException &&
                 ((TaskExecutionException) t).getRetryInterval().isPresent();
@@ -110,7 +110,7 @@ public class LivyOperator extends BaseOperator
         return this.state.params().get("retry_count", int.class, 0);
     }
 
-    private TaskResult run(String endpoint, LivyBatchRequest submission) throws IOException
+    private TaskResult run(String livyAddress, LivyBatchRequest submission) throws IOException
     {
         String applicationName = submission.name().or("unknown");
 
@@ -125,7 +125,7 @@ public class LivyOperator extends BaseOperator
                         RequestBody jsonRequestBody = RequestBody.create(JSON_MEDIA_TYPE, requestBody);
 
                         Request submissionRequest = new Request.Builder()
-                            .url(endpoint)
+                            .url(livyAddress + "/batches")
                             .post(jsonRequestBody)
                             .build();
 
@@ -146,29 +146,33 @@ public class LivyOperator extends BaseOperator
                 }
             );
 
+        String logUrl = getLogUrl(livyAddress, submissionState.id());
+
         LivyTaskState executionState = pollingWaiter(state, STATE_RUNNING + "_" + retryCount())
             .withPollInterval(DurationInterval.of(Duration.ofSeconds(1), Duration.ofSeconds(10)))
-            .withWaitMessage("Livy task id %d is still running", submissionState.id())
-            .awaitOnce(LivyTaskState.class, pollState -> checkTaskCompletion(submissionState.id(), endpoint, pollState));
+            .withWaitMessage("Livy task id %d is still running (%s)", submissionState.id(), logUrl)
+            .awaitOnce(LivyTaskState.class, pollState -> checkTaskCompletion(submissionState.id(), livyAddress, pollState));
 
         logger.info("Livy application id {} ended with status {}", executionState.id(), executionState.state());
 
         return TaskResult.defaultBuilder(request).build();
     }
 
-    private Optional<LivyTaskState> checkTaskCompletion(Integer jobId, String endpoint, TaskState pollState) throws IOException
+    private Optional<LivyTaskState> checkTaskCompletion(Integer jobId, String livyAddress, TaskState pollState) throws IOException
     {
         return pollingRetryExecutor(pollState, STATE_CHECK + "_" + retryCount())
             .withRetryInterval(DurationInterval.of(Duration.ofSeconds(15), Duration.ofSeconds(15)))
             .run(s -> {
                     Request request = new Request.Builder()
-                        .url(endpoint + "/" + jobId)
+                        .url(livyAddress + "/batches/" + jobId)
                         .build();
 
                     Response response = httpClient.newCall(request).execute();
                     String responseBody = response.body().string();
                     ImmutableLivyTaskState currentTaskState = objectMapper.readValue(responseBody, ImmutableLivyTaskState.class);
                     String currentState = currentTaskState.state();
+
+                    String logUrl = getLogUrl(livyAddress, currentTaskState.id());
 
                     if (currentTaskState.appId().isPresent()) {
                         logger.info("Livy task id {} ({}) is currently {}", currentTaskState.id(), currentTaskState.appId().get(), currentTaskState.state());
@@ -189,11 +193,15 @@ public class LivyOperator extends BaseOperator
                             return Optional.of(currentTaskState);
                         case "error":
                         case "dead":
-                            throw new TaskExecutionException("Livy task id " + currentTaskState.id() + " finished with status " + currentState);
+                            throw new TaskExecutionException("Livy task id " + currentTaskState.id() + " finished with status " + currentState + " (" + logUrl + ")");
                         default:
                             throw new RuntimeException("Unknown Livy task state: " + currentTaskState);
                     }
             });
+    }
+
+    private static String getLogUrl(String livyAddress, int taskId) {
+        return livyAddress + "/ui/batch/" + taskId + "/log";
     }
 
     private static Optional<LivyHttpConfig> systemLivyHttpConfig(Config systemConfig)
