@@ -105,16 +105,11 @@ public class LivyOperator extends BaseOperator
         }
     }
 
-    private Integer retryCount()
-    {
-        return this.state.params().get("retry_count", int.class, 0);
-    }
-
     private TaskResult run(String livyAddress, LivyBatchRequest submission) throws IOException
     {
         String applicationName = submission.name().or("unknown");
 
-        LivyTaskState submissionState = pollingRetryExecutor(state, STATE_START + "_" + retryCount())
+        LivyTaskState submissionState = pollingRetryExecutor(state, STATE_START)
             .withErrorMessage("Livy job submission failed: %s", applicationName)
             .runOnce(LivyTaskState.class, (TaskState state) -> {
                     logger.info("Submitting Livy job: {}", applicationName);
@@ -148,7 +143,7 @@ public class LivyOperator extends BaseOperator
 
         String logUrl = getLogUrl(livyAddress, submissionState.id());
 
-        LivyTaskState executionState = pollingWaiter(state, STATE_RUNNING + "_" + retryCount())
+        LivyTaskState executionState = pollingWaiter(state, STATE_RUNNING)
             .withPollInterval(DurationInterval.of(Duration.ofSeconds(1), Duration.ofSeconds(10)))
             .withWaitMessage("Livy task id %d is still running (%s)", submissionState.id(), logUrl)
             .awaitOnce(LivyTaskState.class, pollState -> checkTaskCompletion(submissionState.id(), livyAddress, pollState));
@@ -160,42 +155,45 @@ public class LivyOperator extends BaseOperator
 
     private Optional<LivyTaskState> checkTaskCompletion(Integer jobId, String livyAddress, TaskState pollState) throws IOException
     {
-        return pollingRetryExecutor(pollState, STATE_CHECK + "_" + retryCount())
+        return pollingRetryExecutor(pollState, STATE_CHECK)
             .withRetryInterval(DurationInterval.of(Duration.ofSeconds(15), Duration.ofSeconds(15)))
             .run(s -> {
                     Request request = new Request.Builder()
                         .url(livyAddress + "/batches/" + jobId)
                         .build();
 
-                    Response response = httpClient.newCall(request).execute();
-                    String responseBody = response.body().string();
-                    ImmutableLivyTaskState currentTaskState = objectMapper.readValue(responseBody, ImmutableLivyTaskState.class);
-                    String currentState = currentTaskState.state();
+                    try {
+                        Response response = httpClient.newCall(request).execute();
+                        String responseBody = response.body().string();
+                        ImmutableLivyTaskState currentTaskState = objectMapper.readValue(responseBody, ImmutableLivyTaskState.class);
+                        String currentState = currentTaskState.state();
 
-                    String logUrl = getLogUrl(livyAddress, currentTaskState.id());
+                        if (currentTaskState.appId().isPresent()) {
+                            logger.info("Livy task id {} ({}) is currently {}", currentTaskState.id(), currentTaskState.appId().get(), currentTaskState.state());
+                        } else {
+                            logger.info("Livy task id {} is currently {}", currentTaskState.id(), currentTaskState.state());
+                        }
 
-                    if (currentTaskState.appId().isPresent()) {
-                        logger.info("Livy task id {} ({}) is currently {}", currentTaskState.id(), currentTaskState.appId().get(), currentTaskState.state());
-                    } else {
-                        logger.info("Livy task id {} is currently {}", currentTaskState.id(), currentTaskState.state());
-                    }
+                        switch (currentState) {
+                            case "not_started":
+                            case "starting":
+                            case "recovering":
+                            case "idle":
+                            case "running":
+                            case "busy":
+                            case "shutting_down":
+                                return Optional.absent();
+                            case "success":
+                                return Optional.of(currentTaskState);
+                            case "error":
+                            case "dead":
+                                throw new TaskExecutionException("Livy task id " + currentTaskState.id() + " finished with status " + currentState);
+                            default:
+                                throw new RuntimeException("Unknown Livy task state: " + currentTaskState);
+                        }
 
-                    switch (currentState) {
-                        case "not_started":
-                        case "starting":
-                        case "recovering":
-                        case "idle":
-                        case "running":
-                        case "busy":
-                        case "shutting_down":
-                            return Optional.absent();
-                        case "success":
-                            return Optional.of(currentTaskState);
-                        case "error":
-                        case "dead":
-                            throw new TaskExecutionException("Livy task id " + currentTaskState.id() + " finished with status " + currentState + " (" + logUrl + ")");
-                        default:
-                            throw new RuntimeException("Unknown Livy task state: " + currentTaskState);
+                    } catch (IOException e) {
+                        throw new TaskExecutionException("Livy server is unreachable");
                     }
             });
     }
